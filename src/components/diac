@@ -1,0 +1,241 @@
+public without sharing class AP_Screen_Cards_Controller_FR {
+
+    @AuraEnabled
+    public static AP012_Wrapper_B2B createProposalHeaders(String wrapperJSON){
+
+        AP012_Wrapper_B2B wrapper =(AP012_Wrapper_B2B) JSON.deserialize(wrapperJSON, AP012_Wrapper_B2B.class);
+
+        Boolean hasError = false;
+
+        AP002_Logs_Service log = new AP002_Logs_Service('AP_Screen_Cards_Controller_FR.createProposalHeaders');
+        AP002_Logs_Service.contactId = wrapper.contactId;
+        AP012_Wrapper_B2B returnedWrapper = new AP012_Wrapper_B2B();
+        try {
+            returnedWrapper = AP011_MSA_Utils.proposalHeaders(wrapper, log);
+        } catch (CalloutException cex) {
+            hasError = true;
+        } finally{
+            log.commitLogs(true);
+        }
+
+        Boolean isSubmissionSuccessful = !returnedWrapper.hasSubmissionErrors;
+        isSubmissionSuccessful &= !hasError;
+        returnedWrapper.hasSubmissionErrors = !isSubmissionSuccessful;
+
+        //update prospect wrapper and proposal
+        AP_Utils_DeserializeProspect.createProspectFR(JSON.serialize(returnedWrapper));
+
+        return returnedWrapper;
+    }
+
+
+    @AuraEnabled
+    public static AP012_Wrapper_B2B getBasicAmountFromOfferId(String wrapperJSON){
+
+        AP012_Wrapper_B2B wrapper =(AP012_Wrapper_B2B) JSON.deserialize(wrapperJSON, AP012_Wrapper_B2B.class);
+
+        if(!String.isEmpty(wrapper.offerName)){
+
+            List<Offer__c> offers = [SELECT id, Name, BasicAmount__c FROM Offer__c WHERE Name =: wrapper.offerName];
+            if(!offers.isEmpty()){
+                wrapper.basicAmount = offers[0].BasicAmount__c;
+                system.debug('offers[0].BasicAmount__c: '+offers[0].BasicAmount__c);
+               /*  if(!wrapper.cards.isEmpty()){
+
+                    for(AP012_Wrapper_B2B.CardWrapper currentCard: wrapper.cards){
+                        currentCard.price = wrapper.basicAmount;
+                    }
+                } */
+            }
+        }else if(!String.isEmpty(wrapper.comSettings.AffilateCode__c) && !String.isEmpty(wrapper.comSettings.Type_Afol__c)){
+            Offer__c offer = AP048_GetCommunitySettings.getOfferdetails(wrapper.comSettings.AffilateCode__c, wrapper.comSettings.Type_Afol__c);
+            wrapper.basicAmount = offer.BasicAmount__c;
+            wrapper.offer = offer;
+        }
+
+        return wrapper;
+    }
+
+    @AuraEnabled
+    public Wrapper_Mobility_Corporate getBasicAmountFromOfferIdMobilityCorp(String wrapperJSON, String communitySettingsStr) {
+
+        Wrapper_Mobility_Corporate wrapper = (Wrapper_Mobility_Corporate)JSON.deserialize(wrapperJSON, Wrapper_Mobility_Corporate.class);
+
+        Wrapper_CommunitySettings communitySettings = (Wrapper_CommunitySettings)JSON.deserialize(communitySettingsStr, Wrapper_CommunitySettings.class);
+
+        if(!String.isEmpty(wrapper.offerName)){
+
+            List<Offer__c> offers = [SELECT id, Name, BasicAmount__c FROM Offer__c WHERE Name =: wrapper.offerName];
+            if(!offers.isEmpty()){
+                wrapper.basicAmount = offers[0].BasicAmount__c;
+                system.debug('offers[0].BasicAmount__c: '+offers[0].BasicAmount__c);
+               /*  if(!wrapper.cards.isEmpty()){
+
+                    for(AP012_Wrapper_B2B.CardWrapper currentCard: wrapper.cards){
+                        currentCard.price = wrapper.basicAmount;
+                    }
+                } */
+            }
+
+        }else if(!String.isEmpty(communitySettingsStr.affiliate) && !String.isEmpty(communitySettingsStr.afolType)){
+            Offer__c offer = AP048_GetCommunitySettings.getOfferdetails(communitySettingsStr.affiliate, communitySettingsStr.afolType);
+            wrapper.basicAmount = offer.BasicAmount__c;
+            wrapper.offer = offer;
+        }
+
+        return wrapper;
+    }
+
+    @AuraEnabled
+    public static AP012_Wrapper_B2B createOrEditCardMSA(String wrapperJSON, String cardJSON, Boolean editMode){
+        AP012_Wrapper_B2B wrapper =(AP012_Wrapper_B2B) JSON.deserialize(wrapperJSON, AP012_Wrapper_B2B.class);
+        AP012_Wrapper_B2B.CardWrapper cardWrapper = (AP012_Wrapper_B2B.CardWrapper) JSON.deserialize(cardJSON, AP012_Wrapper_B2B.CardWrapper.class);
+
+        Boolean hasError = false;
+
+        AP002_Logs_Service log = new AP002_Logs_Service('AP_Screen_Cards_Controller_FR.createCardMSA');
+        AP002_Logs_Service.contactId = wrapper.contactId;
+        AP012_Wrapper_B2B returnedWrapper = new AP012_Wrapper_B2B();
+        try {
+            returnedWrapper = AP011_MSA_Utils.proposalCards(wrapper, cardWrapper, log, editMode);
+        } catch (CalloutException cex) {
+            hasError = true;
+        } finally{
+            log.commitLogs(true);
+        }
+
+        Boolean isSubmissionSuccessful = !returnedWrapper.hasSubmissionErrors;
+        isSubmissionSuccessful &= !hasError;
+        returnedWrapper.hasSubmissionErrors = !isSubmissionSuccessful;
+
+        return returnedWrapper;
+    }
+
+    @AuraEnabled
+    public static Boolean deleteCardsMSA(String wrapperJSON, String cardJSON){
+        AP012_Wrapper_B2B wrapper =(AP012_Wrapper_B2B) JSON.deserialize(wrapperJSON, AP012_Wrapper_B2B.class);
+        AP012_Wrapper_B2B.CardWrapper cardWrapper = (AP012_Wrapper_B2B.CardWrapper) JSON.deserialize(cardJSON, AP012_Wrapper_B2B.CardWrapper.class);
+
+        AP002_Logs_Service log = new AP002_Logs_Service('AP_Screen_Cards_Controller_FR.deleteCardsMSA');
+        AP002_Logs_Service.contactId = wrapper.contactId;
+        Boolean deleteResult = false;
+        try {
+            deleteResult = AP011_MSA_Utils.deleteProposalCards(wrapper, cardWrapper, log);
+        } catch (CalloutException cex) {
+            deleteResult = false;
+        } finally{
+            log.commitLogs(true);
+        }
+
+        return deleteResult;
+    }
+
+    @AuraEnabled
+    public static void createCards(String wrapperJSON){
+        AP_Utils_DeserializeProspect.createProspectFR(wrapperJSON);
+    }
+
+    @AuraEnabled
+    public static Boolean sendProposalMass(String wrapperJSON){
+
+        Boolean hasError = false;
+        AP002_Logs_Service log = new AP002_Logs_Service('AP_Screen_Cards_Controller_FR.sendProposalMass');
+
+        AP012_Wrapper_B2B wrapper =(AP012_Wrapper_B2B) JSON.deserialize(wrapperJSON, AP012_Wrapper_B2B.class);
+        AP002_Logs_Service.contactId = wrapper.contactId;
+        if(!String.isEmpty(wrapper.proposalIdDiac)){
+
+            List<Proposal__c> props = AP011_MSA_Utils.queryProposalData(wrapper.proposalIdDiac);
+
+            if(props==null || props.size() <=0) {
+                AP002_Logs_Service.logError('AP_Screen_Cards_Controller_FR.sendProposalMass', AP002_Logs_Service.ErrorCode.E_MISSING_ID, 'No proposal found', wrapper.proposalIdDiac);
+            }
+
+            Proposal__c prop = props[0];
+            Account acc = prop.Contact__r.Account;
+            string prospectId = acc.ProspectId__c;
+
+            try{
+                boolean success = AP011_MSA_Utils.proposalMassCore(props[0], prospectId, log);
+                hasError = !success;
+            }catch(exception ex){
+                hasError = true;
+                log.createLogError(ex, AP002_Logs_Service.ErrorCode.E_UNKNOWN, 'Failed to enqueue Send Prospect', wrapper.proposalIdDiac);
+            }finally{
+                log.commitLogs(false);
+            }
+
+        }
+
+        return hasError;
+    }
+
+
+    // Get Personnalized Card Image preview
+    @AuraEnabled()
+    public static string getCardImagePreview(String imageID){
+
+        try {
+            // Load Gemalto config
+            MTD08_Gemalto_Settings__mdt gemaltoConfig = null;
+
+            if(isRunningInASandbox()){
+                gemaltoConfig = [select ProgramKey__c, Endpoint__c,ImageDeliveryKey__c  from MTD08_Gemalto_Settings__mdt WHERE DeveloperName = 'Dev' LIMIT 1];
+            }else {
+                gemaltoConfig = [select ProgramKey__c, Endpoint__c,ImageDeliveryKey__c from MTD08_Gemalto_Settings__mdt WHERE DeveloperName = 'Prod' LIMIT 1];
+            }
+
+            // Init Web Service
+            gemaltoWebService.Dispatch2Soap wsGemalto = new gemaltoWebService.Dispatch2Soap();
+            wsGemalto.endpoint_x = gemaltoConfig.Endpoint__c;
+
+            // build context Data
+            String contextData = '{endpoint :"' + gemaltoConfig.Endpoint__c + '", imageDeliveryKey: "' + gemaltoConfig.ImageDeliveryKey__c + '", imageId: "' + ImageId + '"}';
+
+            // Call GetImage method
+            gemaltoWebService.GetImageResult result = wsGemalto.GetImage(imageID, gemaltoConfig.ImageDeliveryKey__c);
+
+            // Analyze Gemalto result
+            if(result.ErrorCode == 0) {
+                // Its OK, we have an Image Base64 string value
+                AP002_Logs_Service.logInfo('gemaltoWebService.GetImage', 'Image retrieved successfully', contextData);
+                return '{ "success" : true, "image": "' + result.Image + '"}';
+
+            } else {
+                // An error occured
+                AP002_Logs_Service.logError('gemaltoWebService.GetImage', AP002_Logs_Service.ErrorCode.E_UNKNOWN, 'getCardImagePreview Api error. Code: ' + result.ErrorCode , contextData);
+                return '{ "success" : false, "errorMessage" : "getCardImagePreview Api error. Code: ' + result.ErrorCode + '"}';
+            }
+
+        } catch (Exception ex) {
+
+            AP002_Logs_Service.logError('gemaltoWebService.GetImage', ex, ex.getTypeName(), ex.getMessage(), '{imageId:"' + imageID + '"}');
+            return '{ "success" : false, "errorMessage" : "getCardImagePreview - An exception occurred"}';
+        }
+
+
+    }
+
+    public static Boolean isRunningInASandbox() {
+        return [SELECT IsSandbox FROM Organization LIMIT 1].IsSandbox;
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
